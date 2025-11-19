@@ -2,10 +2,15 @@
 
 ## Setup Instructions
 
+**Recommended: Python 3.11**
+
 1. Create a virtual environment:
 ```bash
+python3.11 -m venv venv
+# Or if python3.11 is your default:
 python -m venv venv
-source venv/bin/activate
+
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 2. Install dependencies:

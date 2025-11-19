@@ -31,9 +31,12 @@ Each lab directory contains:
 cd labs/Day1_Medium  # or any other lab
 ```
 
-2. Create a virtual environment:
+2. Create a virtual environment with Python 3.11:
 ```bash
+python3.11 -m venv venv
+# Or if python3.11 is your default:
 python -m venv venv
+
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
@@ -56,12 +59,12 @@ python main.py  # or follow lab-specific instructions
 
 ## Prerequisites
 
-- Python 3.11+ (tested with Python 3.14)
+- **Python 3.11** (Recommended - most stable)
 - OpenAI API key
 - (Optional) Redis for Day 3 Advanced lab
 - (Optional) Docker for Day 3 Advanced lab
 
-**Note**: All labs have been updated for Python 3.14 compatibility. See `PYTHON_3_14_COMPATIBILITY.md` for details.
+**Note**: All labs are optimized for Python 3.11. See `PYTHON_3_11_SETUP.md` for detailed setup instructions.
 
 ## Notes
 
@@ -73,13 +76,20 @@ python main.py  # or follow lab-specific instructions
 
 Refer to the main lab documentation files in the parent directory for detailed explanations and exercises.
 
-## Python 3.14 Compatibility
+## Python 3.11 Compatibility
 
-All labs have been updated to work with Python 3.14. Key changes:
-- Updated all package versions to latest compatible releases
+All labs are optimized for **Python 3.11** which provides:
+- ✅ Excellent stability with LangChain
+- ✅ Full package compatibility
+- ✅ No compatibility warnings
+- ✅ Best performance
+
+Key features:
+- Updated all package versions for Python 3.11 compatibility
 - Migrated to LangChain Core imports (`langchain_core`)
 - Updated RAG implementation to use LCEL (LangChain Expression Language)
 - All Pydantic models use v2 syntax
+- Fallback imports for maximum compatibility
 
-See `PYTHON_3_14_COMPATIBILITY.md` for detailed information about compatibility updates.
+See `PYTHON_3_11_SETUP.md` for detailed setup instructions.
 

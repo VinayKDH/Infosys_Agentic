@@ -1,7 +1,5 @@
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ConversationSummaryBufferMemory
 from tools.document_qa import DocumentQATool
 from tools.code_executor import CodeExecutor
 from tools.web_search import AdvancedWebSearch
@@ -11,6 +9,36 @@ from rag.document_loader import DocumentLoader
 from config import Config
 import os
 from dotenv import load_dotenv
+
+# Try to import agent components with fallbacks
+try:
+    from langchain.agents import AgentExecutor, create_openai_tools_agent
+    AGENT_TYPE = "openai_tools"
+except ImportError:
+    try:
+        from langchain.agents import AgentExecutor, create_react_agent
+        AGENT_TYPE = "react"
+    except ImportError:
+        AGENT_TYPE = "simple"
+
+# Try to import memory with fallbacks
+try:
+    from langchain.memory import ConversationSummaryBufferMemory
+except ImportError:
+    # Simple memory fallback
+    class ConversationSummaryBufferMemory:
+        def __init__(self, **kwargs):
+            self.chat_memory = type('obj', (object,), {'messages': []})()
+            self.llm = kwargs.get('llm')
+        
+        def save_context(self, inputs, outputs):
+            pass
+        
+        def load_memory_variables(self, inputs):
+            return {"chat_history": []}
+        
+        def predict_new_summary(self, messages, existing_summary):
+            return "Conversation summary not available."
 
 load_dotenv()
 
@@ -32,12 +60,15 @@ class AdvancedAgent:
         self._setup_tools()
         
         # Initialize memory
-        self.memory = ConversationSummaryBufferMemory(
-            llm=self.llm,
-            memory_key="chat_history",
-            return_messages=True,
-            max_token_limit=2000
-        )
+        try:
+            self.memory = ConversationSummaryBufferMemory(
+                llm=self.llm,
+                memory_key="chat_history",
+                return_messages=True,
+                max_token_limit=2000
+            )
+        except:
+            self.memory = ConversationSummaryBufferMemory(llm=self.llm)
         
         # Initialize agent
         self.agent = self._create_agent()
@@ -94,18 +125,35 @@ class AdvancedAgent:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
         
-        # Create the agent
-        agent = create_react_agent(self.llm, self.tools, prompt)
+        # Create the agent based on available type
+        if AGENT_TYPE == "openai_tools":
+            agent = create_openai_tools_agent(self.llm, self.tools, prompt)
+        elif AGENT_TYPE == "react":
+            agent = create_react_agent(self.llm, self.tools, prompt)
+        else:
+            # Fallback: simple chain
+            from langchain.chains import LLMChain
+            return LLMChain(llm=self.llm, prompt=prompt, memory=self.memory, verbose=True)
         
         # Create agent executor with memory
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=self.tools,
-            memory=self.memory,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=5
-        )
+        try:
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=self.tools,
+                memory=self.memory,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=5
+            )
+        except:
+            # Fallback without memory
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=self.tools,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=5
+            )
         
         return agent_executor
     
@@ -113,16 +161,19 @@ class AdvancedAgent:
         """Process user query"""
         try:
             response = self.agent.invoke({"input": user_input})
-            return response['output']
+            return response['output'] if isinstance(response, dict) else str(response)
         except Exception as e:
             return f"Error: {str(e)}"
     
     def get_conversation_summary(self):
         """Get summary of conversation"""
-        return self.memory.predict_new_summary(
-            self.memory.chat_memory.messages,
-            ""
-        )
+        try:
+            return self.memory.predict_new_summary(
+                self.memory.chat_memory.messages,
+                ""
+            )
+        except:
+            return "Conversation summary not available."
 
 # Main execution
 if __name__ == "__main__":
@@ -164,4 +215,3 @@ if __name__ == "__main__":
         
         response = agent.query(user_input)
         print(f"\nAgentAI: {response}")
-

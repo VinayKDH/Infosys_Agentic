@@ -1,10 +1,22 @@
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from state import Task, TaskStatus
 import os
 from datetime import datetime
+
+# Try to import agent components
+try:
+    from langchain.agents import AgentExecutor, create_openai_tools_agent
+    AGENT_AVAILABLE = True
+    AGENT_TYPE = "openai_tools"
+except ImportError:
+    try:
+        from langchain.agents import AgentExecutor, create_react_agent
+        AGENT_AVAILABLE = True
+        AGENT_TYPE = "react"
+    except ImportError:
+        AGENT_AVAILABLE = False
 
 class ResearcherAgent:
     def __init__(self):
@@ -15,24 +27,30 @@ class ResearcherAgent:
         )
         self.search_tool = DuckDuckGoSearchRun()
         
-        # Create prompt template
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a research assistant. Use the search tool to find information."),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        # Create agent
-        agent = create_react_agent(self.llm, [self.search_tool], prompt)
-        
-        # Create agent executor
-        self.agent = AgentExecutor(
-            agent=agent,
-            tools=[self.search_tool],
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=3
-        )
+        if AGENT_AVAILABLE:
+            # Create prompt template
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a research assistant. Use the search tool to find information."),
+                ("human", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad"),
+            ])
+            
+            # Create agent
+            if AGENT_TYPE == "openai_tools":
+                agent = create_openai_tools_agent(self.llm, [self.search_tool], prompt)
+            else:
+                agent = create_react_agent(self.llm, [self.search_tool], prompt)
+            
+            # Create agent executor
+            self.agent = AgentExecutor(
+                agent=agent,
+                tools=[self.search_tool],
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=3
+            )
+        else:
+            self.agent = None
     
     def research(self, task: Task, context: dict = None) -> dict:
         """Perform research for a task"""
@@ -47,12 +65,17 @@ class ResearcherAgent:
         Provide detailed findings with sources. Focus on accuracy and relevance."""
         
         try:
-            result = self.agent.invoke({"input": research_prompt})
+            if self.agent:
+                result = self.agent.invoke({"input": research_prompt})
+                output = result["output"] if isinstance(result, dict) else str(result)
+            else:
+                # Fallback: direct search
+                output = self.search_tool.run(query)
             
             return {
                 "task_id": task["id"],
-                "findings": result["output"],
-                "sources": self._extract_sources(result["output"]),
+                "findings": output,
+                "sources": self._extract_sources(output),
                 "status": TaskStatus.COMPLETED,
                 "timestamp": datetime.now().isoformat()
             }
