@@ -1,9 +1,13 @@
+"""
+Day 1 Medium Lab - Conversational Agent with LangChain
+This version is compatible with Python 3.11, 3.12, and 3.14
+"""
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ConversationBufferMemory
+from langchain_core.prompts import ChatPromptTemplate
 from tools import tools
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv()
 
@@ -14,108 +18,122 @@ llm = ChatOpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
 
-# Initialize memory
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True
-)
+# Simple conversation history (in-memory)
+conversation_history = []
 
-# Try to import and create agent with fallbacks
-try:
-    # Try newer LangChain API
-    from langchain.agents import create_openai_tools_agent, AgentExecutor
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are a helpful AI assistant. You have access to tools to help answer questions.
-        Use the tools when needed, especially for calculations and web searches.
-        Always be polite and helpful."""),
-        MessagesPlaceholder(variable_name="chat_history"),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
-    agent = create_openai_tools_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=tools,
-        memory=memory,
-        verbose=True,
-        handle_parsing_errors=True,
-        max_iterations=5
-    )
-except ImportError:
+# Create tools dictionary
+tools_dict = {tool.name: tool for tool in tools}
+
+def process_input(user_input: str):
+    """Process user input and handle tool calls"""
+    global conversation_history
+    
+    user_input_lower = user_input.lower()
+    
+    # Check for calculator requests
+    if any(op in user_input for op in ["+", "-", "*", "/", "="]) or "calculate" in user_input_lower:
+        # Extract mathematical expression
+        # Try to find expressions like "25 * 37" or "what is 2+2"
+        calc_patterns = [
+            r'(\d+(?:\.\d+)?)\s*([+\-*/])\s*(\d+(?:\.\d+)?)',
+            r'(\d+(?:\.\d+)?)\s*([+\-*/])\s*(\d+(?:\.\d+)?)',
+        ]
+        
+        for pattern in calc_patterns:
+            calc_match = re.search(pattern, user_input)
+            if calc_match:
+                expr = calc_match.group(0).strip()
+                try:
+                    result = tools_dict["Calculator"].func(expr)
+                    conversation_history.append(f"User: {user_input}")
+                    conversation_history.append(f"Assistant: {result}")
+                    return result
+                except Exception as e:
+                    pass
+    
+    # Check for search requests
+    if "search" in user_input_lower or "find" in user_input_lower or "look up" in user_input_lower:
+        # Extract search query
+        search_patterns = [
+            r'(?:search|find|look up)[\s:]+(.+)',
+            r'search for (.+)',
+            r'find (.+)',
+        ]
+        
+        for pattern in search_patterns:
+            search_match = re.search(pattern, user_input_lower)
+            if search_match:
+                query = search_match.group(1).strip()
+                try:
+                    result = tools_dict["WebSearch"].func(query)
+                    conversation_history.append(f"User: {user_input}")
+                    conversation_history.append(f"Assistant: {result[:200]}...")
+                    return result
+                except Exception as e:
+                    return f"Search error: {str(e)}"
+    
+    # Build context from conversation history
+    context = "\n".join(conversation_history[-6:]) if conversation_history else ""
+    
+    # Create prompt with conversation history
+    if context:
+        prompt_text = f"""You are a helpful AI assistant. You have access to tools for calculations and web searches.
+        
+Previous conversation:
+{context}
+
+Current user input: {user_input}
+
+Provide a helpful response. If the user asks for calculations or searches, mention that you can help with that."""
+    else:
+        prompt_text = f"""You are a helpful AI assistant. You can help with:
+- Answering questions
+- Performing calculations (just ask me to calculate something)
+- Searching the web (just ask me to search for something)
+
+User: {user_input}
+Assistant:"""
+    
+    # Use LLM for normal conversation
     try:
-        # Try alternative import path
-        from langchain_core.agents import AgentExecutor
-        from langchain.agents import create_react_agent
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful AI assistant. You have access to tools to help answer questions.
-            Use the tools when needed, especially for calculations and web searches.
-            Always be polite and helpful."""),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        agent = create_react_agent(llm, tools, prompt)
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=tools,
-            memory=memory,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=5
-        )
-    except ImportError:
-        # Fallback: Use simple chain with tool calling
-        from langchain.chains import LLMChain
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful AI assistant. You have access to tools.
-            When you need to use a tool, describe what you need and I'll help you."""),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-        ])
-        chain = LLMChain(llm=llm, prompt=prompt, memory=memory, verbose=True)
+        response = llm.invoke(prompt_text)
+        answer = response.content if hasattr(response, 'content') else str(response)
         
-        # Create a wrapper to handle tool calls
-        class SimpleAgentExecutor:
-            def __init__(self, chain, tools):
-                self.chain = chain
-                self.tools = {tool.name: tool for tool in tools}
-            
-            def invoke(self, input_dict):
-                user_input = input_dict.get("input", "")
-                # Check if user wants to use a tool
-                if "calculate" in user_input.lower() or any(op in user_input for op in ["+", "-", "*", "/"]):
-                    # Try calculator
-                    for tool in self.tools.values():
-                        if tool.name == "Calculator":
-                            try:
-                                # Extract expression
-                                import re
-                                expr = re.findall(r'[\d+\-*/()., ]+', user_input)
-                                if expr:
-                                    result = tool.func(expr[0].strip())
-                                    return {"output": result}
-                            except:
-                                pass
-                
-                # Use LLM chain
-                result = self.chain.invoke(input_dict)
-                return {"output": result.get("text", str(result))}
+        # Update conversation history
+        conversation_history.append(f"User: {user_input}")
+        conversation_history.append(f"Assistant: {answer}")
         
-        agent_executor = SimpleAgentExecutor(chain, tools)
+        # Keep only last 10 exchanges
+        if len(conversation_history) > 20:
+            conversation_history = conversation_history[-20:]
+        
+        return answer
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # Test the agent
 if __name__ == "__main__":
-    print("AgentAI: Hello! I can help you with calculations, web searches, and conversations.")
+    print("=" * 60)
+    print("AgentAI: Hello! I can help you with:")
+    print("  - Calculations (e.g., 'What is 25 * 37?')")
+    print("  - Web searches (e.g., 'Search for latest AI news')")
+    print("  - General conversations")
+    print("=" * 60)
+    print()
     
     while True:
         user_input = input("\nYou: ")
         if user_input.lower() in ['exit', 'quit', 'bye']:
-            print("AgentAI: Goodbye!")
+            print("\nAgentAI: Goodbye!")
             break
         
+        if not user_input.strip():
+            continue
+        
         try:
-            response = agent_executor.invoke({"input": user_input})
-            print(f"AgentAI: {response['output']}")
+            response = process_input(user_input)
+            print(f"\nAgentAI: {response}")
         except Exception as e:
-            print(f"AgentAI: Sorry, I encountered an error: {str(e)}")
-
+            print(f"\nAgentAI: Sorry, I encountered an error: {str(e)}")
+            import traceback
+            traceback.print_exc()
