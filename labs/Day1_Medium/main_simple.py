@@ -4,7 +4,6 @@ If main.py doesn't work, use this file instead
 """
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
 from tools import tools
 from dotenv import load_dotenv
@@ -12,6 +11,24 @@ import os
 import re
 
 load_dotenv()
+
+# Try to import memory with fallbacks
+try:
+    from langchain.memory import ConversationBufferMemory
+except ImportError:
+    try:
+        from langchain_core.memory import ConversationBufferMemory
+    except ImportError:
+        # Create a simple memory class if not available
+        class ConversationBufferMemory:
+            def __init__(self, **kwargs):
+                self.chat_memory = type('obj', (object,), {'messages': []})()
+            
+            def save_context(self, inputs, outputs):
+                pass
+            
+            def load_memory_variables(self, inputs):
+                return {"chat_history": []}
 
 # Initialize LLM
 llm = ChatOpenAI(
@@ -21,10 +38,16 @@ llm = ChatOpenAI(
 )
 
 # Initialize memory
-memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True
-)
+try:
+    memory = ConversationBufferMemory(
+        memory_key="chat_history",
+        return_messages=True
+    )
+except:
+    # Fallback: simple memory without return_messages
+    memory = ConversationBufferMemory(
+        memory_key="chat_history"
+    )
 
 # Create prompt template
 prompt = ChatPromptTemplate.from_messages([
@@ -40,8 +63,13 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}"),
 ])
 
-# Create chain
-chain = LLMChain(llm=llm, prompt=prompt, memory=memory, verbose=True)
+# Create chain (try with memory, fallback without if needed)
+try:
+    chain = LLMChain(llm=llm, prompt=prompt, memory=memory, verbose=True)
+except:
+    # Fallback without memory
+    chain = LLMChain(llm=llm, prompt=prompt, verbose=True)
+    memory = None
 
 # Create tools dictionary
 tools_dict = {tool.name: tool for tool in tools}
