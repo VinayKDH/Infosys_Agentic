@@ -5,3 +5,8 @@ langchain-core>=0.3.0
 python-dotenv>=1.0.0
 duckduckgo-search>=6.0.0
 
+# Note: If you get memory import errors, try:
+# pip install langchain[all]
+# or
+# pip install langchain-memory
+
