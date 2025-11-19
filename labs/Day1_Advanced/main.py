@@ -1,5 +1,6 @@
 from langchain_openai import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationSummaryBufferMemory
 from tools.document_qa import DocumentQATool
 from tools.code_executor import CodeExecutor
@@ -83,18 +84,30 @@ class AdvancedAgent:
     
     def _create_agent(self):
         """Create agent with tools and memory"""
-        agent = initialize_agent(
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a helpful AI assistant with access to multiple tools.
+            You can answer questions, search the web, execute code, query documents, and perform calculations.
+            Use the appropriate tool for each task."""),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+        
+        # Create the agent
+        agent = create_react_agent(self.llm, self.tools, prompt)
+        
+        # Create agent executor with memory
+        agent_executor = AgentExecutor(
+            agent=agent,
             tools=self.tools,
-            llm=self.llm,
-            agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
             memory=self.memory,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=5,
-            early_stopping_method="generate"
+            max_iterations=5
         )
         
-        return agent
+        return agent_executor
     
     def query(self, user_input: str):
         """Process user query"""

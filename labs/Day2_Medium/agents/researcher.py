@@ -1,7 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain.agents import initialize_agent, AgentType
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 import os
 
 class ResearcherAgent:
@@ -13,11 +13,20 @@ class ResearcherAgent:
         )
         self.search_tool = DuckDuckGoSearchRun()
         
-        # Create agent with search tool
-        self.agent = initialize_agent(
+        # Create prompt template
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a research assistant. Use the search tool to find information."),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+        
+        # Create agent
+        agent = create_react_agent(self.llm, [self.search_tool], prompt)
+        
+        # Create agent executor
+        self.agent = AgentExecutor(
+            agent=agent,
             tools=[self.search_tool],
-            llm=self.llm,
-            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=True,
             handle_parsing_errors=True
         )
