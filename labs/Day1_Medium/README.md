@@ -2,21 +2,18 @@
 
 ## Python Version Recommendation
 
-**Recommended:** Python 3.11 or 3.12 (most stable with LangChain)
+**Recommended:** Python 3.11 (most stable with LangChain)
 
-**Python 3.14:** Works but may have compatibility warnings. The code includes fallbacks.
+All code is optimized for Python 3.11 for best compatibility and performance.
 
 ## Setup Instructions
 
 1. **Create a virtual environment:**
 ```bash
-# For Python 3.11/3.12 (recommended)
+# Recommended: Python 3.11
 python3.11 -m venv venv
-# or
-python3.12 -m venv venv
-
-# For Python 3.14
-python3.14 -m venv venv
+# Or if python3.11 is your default:
+python -m venv venv
 ```
 
 2. **Activate virtual environment:**
@@ -104,7 +101,7 @@ Day1_Medium/
 
 ## Features
 
-✅ Works with Python 3.11, 3.12, and 3.14  
+✅ Optimized for Python 3.11  
 ✅ No complex memory dependencies  
 ✅ Simple tool integration  
 ✅ Conversation history  
