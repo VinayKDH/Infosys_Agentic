@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from app.models import QueryRequest, QueryResponse, StreamChunk, ErrorResponse
-from app.agent_service import agent_service
+from app.agent_service import get_agent_service
 import json
 import asyncio
 
@@ -18,6 +18,8 @@ async def query_agent(request: QueryRequest):
     - **max_iterations**: Maximum agent iterations
     """
     try:
+        agent_service = get_agent_service()
+        
         if request.stream:
             raise HTTPException(
                 status_code=400,
@@ -32,6 +34,11 @@ async def query_agent(request: QueryRequest):
         
         return QueryResponse(**result)
     
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -46,6 +53,8 @@ async def stream_query(request: QueryRequest):
     Returns Server-Sent Events (SSE) stream.
     """
     try:
+        agent_service = get_agent_service()
+        
         async def generate():
             async for chunk in agent_service.stream_query(
                 query=request.query,
@@ -74,6 +83,11 @@ async def stream_query(request: QueryRequest):
             }
         )
     
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -83,28 +97,40 @@ async def stream_query(request: QueryRequest):
 @router.get("/session/{session_id}")
 async def get_session(session_id: str):
     """Get information about a session"""
-    info = agent_service.get_session_info(session_id)
-    
-    if "error" in info:
-        raise HTTPException(status_code=404, detail=info["error"])
-    
-    return info
+    try:
+        agent_service = get_agent_service()
+        info = agent_service.get_session_info(session_id)
+        
+        if "error" in info:
+            raise HTTPException(status_code=404, detail=info["error"])
+        
+        return info
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.delete("/session/{session_id}")
 async def delete_session(session_id: str):
     """Delete a session"""
-    success = agent_service.clear_session(session_id)
-    
-    if not success:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    return {"message": "Session deleted successfully"}
+    try:
+        agent_service = get_agent_service()
+        success = agent_service.clear_session(session_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return {"message": "Session deleted successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/sessions")
 async def list_sessions():
     """List all active sessions"""
-    return {
-        "sessions": list(agent_service.sessions.keys()),
-        "count": len(agent_service.sessions)
-    }
+    try:
+        agent_service = get_agent_service()
+        return {
+            "sessions": list(agent_service.sessions.keys()),
+            "count": len(agent_service.sessions)
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 

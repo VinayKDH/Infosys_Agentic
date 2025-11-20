@@ -1,23 +1,34 @@
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import HumanMessage, AIMessage
-from typing import Dict, Any, AsyncIterator
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
+from typing import Dict, Any, AsyncIterator, TypedDict, Annotated, List
+import operator
 import os
 import time
 import uuid
 from datetime import datetime
 
-# Simple state for this example
-class AgentState(dict):
-    pass
+# Proper state definition for LangGraph
+class AgentState(TypedDict):
+    """State schema for the agent graph"""
+    messages: Annotated[List[BaseMessage], operator.add]
+    query: str
+    response: str
 
 class AgentService:
     def __init__(self):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY not found in environment variables. "
+                "Please set it in your .env file or environment."
+            )
+        
         self.llm = ChatOpenAI(
             model="gpt-4",
             temperature=0.7,
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=api_key
         )
         self.memory = MemorySaver()
         self.graph = self._build_graph()
@@ -37,7 +48,7 @@ class AgentService:
         # Compile with checkpoints
         return workflow.compile(checkpointer=self.memory)
     
-    def _agent_node(self, state: AgentState):
+    def _agent_node(self, state: AgentState) -> AgentState:
         """Agent processing node"""
         messages = state.get("messages", [])
         
@@ -54,10 +65,13 @@ class AgentService:
         # Simple agent response (replace with your actual agent logic)
         response = self.llm.invoke(f"User asked: {user_message}. Provide a helpful response.")
         
-        state["messages"] = state.get("messages", []) + [AIMessage(content=response.content)]
-        state["response"] = response.content
-        
-        return state
+        # Return updated state - LangGraph will merge this with existing state
+        # The messages list will be appended to (not replaced) due to operator.add
+        return {
+            "messages": [AIMessage(content=response.content)],
+            "query": state.get("query", user_message),
+            "response": response.content
+        }
     
     async def process_query(
         self, 
@@ -86,9 +100,10 @@ class AgentService:
         existing_messages = []
         # In a real implementation, you'd load from checkpoints
         
-        initial_state = {
+        initial_state: AgentState = {
             "messages": existing_messages + [HumanMessage(content=query)],
-            "query": query
+            "query": query,
+            "response": ""
         }
         
         try:
@@ -121,9 +136,10 @@ class AgentService:
         """Stream agent response"""
         config = {"configurable": {"thread_id": session_id or str(uuid.uuid4())}}
         
-        initial_state = {
+        initial_state: AgentState = {
             "messages": [HumanMessage(content=query)],
-            "query": query
+            "query": query,
+            "response": ""
         }
         
         # Stream response word by word (simplified)
@@ -154,6 +170,13 @@ class AgentService:
             return True
         return False
 
-# Global agent service instance
-agent_service = AgentService()
+# Global agent service instance (lazy initialization)
+agent_service = None
+
+def get_agent_service():
+    """Get or create agent service instance"""
+    global agent_service
+    if agent_service is None:
+        agent_service = AgentService()
+    return agent_service
 

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     WORKERS: int = 4
     
     # OpenAI Settings
-    OPENAI_API_KEY: str
+    OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4"
     OPENAI_TEMPERATURE: float = 0.7
     OPENAI_MAX_TOKENS: int = 2000
